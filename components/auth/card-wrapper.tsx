@@ -6,37 +6,38 @@ import {
   CardHeader,
   CardFooter,
 } from "@/components/ui/card";
-import AuthHeader from "./auth-header";
-import { BackButton } from "./back-button";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 interface CardWrapperProps {
   children: React.ReactNode;
   headerLabel: string;
-  backButtonLabel?: string;
   title: string;
-  showSocial?: boolean;
-  backButtonHref?: string;
+  backButtonLabel: string;
+  backButtonHref: string;
 }
 
-const CardWrapper = ({
+export default function CardWrapper({
   children,
   headerLabel,
-  backButtonLabel = "",
-  backButtonHref = "#",
   title,
-  showSocial,
-}: CardWrapperProps) => {
+  backButtonLabel,
+  backButtonHref,
+}: CardWrapperProps) {
   return (
-    <Card className="shadow-md w-full">
+    <Card className="w-full shadow-md">
       <CardHeader>
-        <AuthHeader label={headerLabel} title={title} />
+        <div className="w-full flex flex-col items-center justify-center gap-y-4">
+          <h1 className="text-3xl font-semibold">{title}</h1>
+          <p className="text-muted-foreground text-sm">{headerLabel}</p>
+        </div>
       </CardHeader>
       <CardContent>{children}</CardContent>
       <CardFooter>
-        <BackButton label={backButtonLabel} href={backButtonHref} />
+        <Button variant="link" className="font-normal w-full" size="sm" asChild>
+          <Link href={backButtonHref}>{backButtonLabel}</Link>
+        </Button>
       </CardFooter>
     </Card>
   );
-};
-
-export default CardWrapper;
+}

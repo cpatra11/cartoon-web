@@ -15,12 +15,14 @@ import { LoginSchema } from "@/schemas";
 import { Input } from "@/components/ui/input";
 import { z } from "zod";
 import { Button } from "../ui/button";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { FormError } from "./form-error";
 import { FormSuccess } from "./form-success";
 import { login } from "@/actions/login";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { signIn } from "next-auth/react";
+import { FcGoogle } from "react-icons/fc";
 
 const LoginForm = () => {
   const [loading, setLoading] = useState(false);
@@ -65,14 +67,53 @@ const LoginForm = () => {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      await signIn("google", {
+        callbackUrl: "/dashboard",
+        redirect: true, // Force redirect handling by NextAuth
+      });
+    } catch (error: any) {
+      // This might not execute as the redirect happens
+      setError("Failed to sign in with Google");
+      console.error("Google sign-in error:", error);
+      setLoading(false);
+    }
+  };
+
   return (
     <CardWrapper
       headerLabel="Log in to your account"
       title="Login"
       backButtonHref="/register"
       backButtonLabel="Don't have an account? Register here."
-      showSocial
     >
+      {/* Google Auth Button */}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={handleGoogleSignIn}
+        disabled={loading}
+        className="w-full flex items-center justify-center gap-2"
+      >
+        <FcGoogle className="h-5 w-5" />
+        Continue with Google
+      </Button>
+
+      {/* OR Separator */}
+      <div className="relative my-4">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-300" />
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="bg-white px-2 text-gray-500">OR</span>
+        </div>
+      </div>
+
+      {/* Email/Password Form */}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <div className="space-y-4">
@@ -126,7 +167,7 @@ const LoginForm = () => {
           <FormError message={error} />
           <FormSuccess message={success} />
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Login"}
+            {loading ? "Signing in..." : "Login with Email"}
           </Button>
         </form>
       </Form>

@@ -14,8 +14,8 @@ const isEdgeRuntime =
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
     CredentialsProvider({
       name: "credentials",
@@ -47,29 +47,62 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  // Only use Prisma adapter in non-edge environments
+  // Only use Prisma adapter in non-edge environments and configure it correctly
   adapter: isEdgeRuntime ? undefined : PrismaAdapter(prisma),
   // Use JWT session strategy which is compatible with Edge
   session: {
     strategy: "jwt",
   },
   pages: {
-    signIn: "/sign-in", // Changed from "/login" to "/sign-in"
+    signIn: "/sign-in",
+    error: "/auth/error", // Add error page
   },
+  debug: process.env.NODE_ENV === "development", // Enable debugging in development
   callbacks: {
-    // Add any necessary callbacks here
-    jwt: async ({ token, user }) => {
+    // Add payment status to the JWT token
+    jwt: async ({ token, user, account }) => {
       if (user) {
         token.id = user.id;
         token.email = user.email;
-        // Add any other user properties you need
+
+        // Only add provider if it exists
+        if (account) {
+          token.provider = account.provider;
+        } else {
+          token.provider = "credentials";
+        }
+
+        // Get payment status from database and add to token
+        try {
+          if (user.id) {
+            // Make sure user.id exists
+            const userWithPayment = await prisma.user.findUnique({
+              where: {
+                id: user.id,
+              },
+              select: {
+                hasPaid: true,
+              },
+            });
+
+            token.hasPaid = userWithPayment?.hasPaid || false;
+          }
+        } catch (error) {
+          console.error("Error getting payment status:", error);
+          token.hasPaid = false;
+        }
       }
       return token;
     },
+
+    // Pass payment status to the client session
     session: async ({ session, token }) => {
-      if (session?.user) {
+      if (session?.user && token) {
         session.user.id = token.id as string;
-        // Copy any other properties from token to session
+        session.user.hasPaid = token.hasPaid as boolean;
+        if (token.provider) {
+          session.user.provider = token.provider as string;
+        }
       }
       return session;
     },
