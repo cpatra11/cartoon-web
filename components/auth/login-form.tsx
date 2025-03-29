@@ -15,14 +15,19 @@ import { LoginSchema } from "@/schemas";
 import { Input } from "@/components/ui/input";
 import { z } from "zod";
 import { Button } from "../ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FormError } from "./form-error";
+import { FormSuccess } from "./form-success";
 import { login } from "@/actions/login";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 const LoginForm = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
   const form = useForm<z.infer<typeof LoginSchema>>({
     resolver: zodResolver(LoginSchema),
@@ -32,16 +37,32 @@ const LoginForm = () => {
     },
   });
 
-  const onSubmit = async (data: z.infer<typeof LoginSchema>) => {
+  const onSubmit = async (values: z.infer<typeof LoginSchema>) => {
     setLoading(true);
-    login(data).then((res) => {
-      if (res?.error) {
-        setError(res?.error);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response = await login(values);
+
+      if (response?.error) {
+        setError(response.error);
         setLoading(false);
-      } else {
-        setLoading(false);
+        return;
       }
-    });
+
+      setSuccess("Login successful! Redirecting...");
+
+      // Instead of trying multiple redirect approaches, use a simple one that works
+      setTimeout(() => {
+        // Force a hard navigation to the dashboard
+        window.location.href = "/dashboard";
+      }, 1000);
+    } catch (error: any) {
+      setError(error?.message || "Something went wrong");
+      console.error("Login error:", error);
+      setLoading(false);
+    }
   };
 
   return (
@@ -66,6 +87,8 @@ const LoginForm = () => {
                       {...field}
                       placeholder="johndoe@email.com"
                       type="email"
+                      disabled={loading}
+                      autoComplete="email"
                     />
                   </FormControl>
                   <FormMessage />
@@ -79,7 +102,13 @@ const LoginForm = () => {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="******" type="password" />
+                    <Input
+                      {...field}
+                      placeholder="******"
+                      type="password"
+                      disabled={loading}
+                      autoComplete="current-password"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -95,8 +124,9 @@ const LoginForm = () => {
             </Button>
           </div>
           <FormError message={error} />
-          <Button type="submit" className="w-full">
-            {loading ? "Loading..." : "Login"}
+          <FormSuccess message={success} />
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Signing in..." : "Login"}
           </Button>
         </form>
       </Form>

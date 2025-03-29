@@ -1,30 +1,48 @@
-import { auth } from "@/auth";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-const protectedRoutes = ["/dashboard", "/profile", "/settings"]; // Add your protected routes here
-const paymentRequiredRoutes = ["/premium", "/exclusive-access"]; // Add your payment required routes here
+export async function middleware(request: NextRequest) {
+  // Instead of using the full auth() function which tries to use Prisma in edge,
+  // we'll use getToken which is safer for middleware
+  const token = await getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
 
-export default auth((req) => {
-  const { pathname } = req.nextUrl;
+  const { pathname } = request.nextUrl;
 
+  // If the user is trying to access the homepage or sign-in page and is already authenticated,
+  // redirect them to the dashboard
+  if (token && (pathname === "/" || pathname === "/sign-in")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  // If the user is trying to access protected routes without authentication,
+  // redirect them to sign-in
   if (
-    !req.auth &&
-    (protectedRoutes.includes(pathname) ||
-      paymentRequiredRoutes.includes(pathname))
+    !token &&
+    (pathname.startsWith("/dashboard") || pathname.startsWith("/profile"))
   ) {
-    const newUrl = new URL("/sign-in", req.nextUrl.origin);
-    return Response.redirect(newUrl);
+    const url = request.nextUrl.clone();
+    url.pathname = "/sign-in"; // Changed from "/login" to "/sign-in"
+    url.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(url);
   }
-  if (req.auth && (pathname === "/sign-in" || pathname === "/register")) {
-    const newUrl = new URL("/dashboard", req.nextUrl.origin);
-    return Response.redirect(newUrl);
-  }
-  if (
-    req.auth &&
-    "hasAccess" in req.auth &&
-    !req.auth.hasAccess &&
-    paymentRequiredRoutes.includes(pathname)
-  ) {
-    const newUrl = new URL("/payment", req.nextUrl.origin);
-    return Response.redirect(newUrl);
-  }
-});
+
+  return NextResponse.next();
+}
+
+// See "Matching Paths" below to learn more
+export const config = {
+  matcher: [
+    // Add routes you want middleware to run on
+    "/",
+    "/sign-in",
+    "/dashboard/:path*",
+    "/profile/:path*",
+    // Add any other paths you want to protect
+  ],
+};

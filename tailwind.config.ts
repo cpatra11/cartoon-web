@@ -1,6 +1,6 @@
 import type { Config } from "tailwindcss";
-import { withUt } from "uploadthing/tw";
-const config = withUt({
+
+const config: Config = {
   darkMode: ["class"],
   content: [
     "./pages/**/*.{ts,tsx}",
@@ -75,6 +75,6 @@ const config = withUt({
     },
   },
   plugins: [require("tailwindcss-animate")],
-}) satisfies Config;
+};
 
 export default config;

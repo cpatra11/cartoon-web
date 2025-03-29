@@ -1,64 +1,98 @@
 import NextAuth from "next-auth";
-import authConfig from "./auth.config";
+import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import prisma from "./lib/database";
-import { getUserById } from "./data/user";
+import { prisma } from "./lib/prisma";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { getUserByEmail } from "./data/user";
+import bcrypt from "bcryptjs";
 
-export const {
-  handlers: { GET, POST },
-  auth,
-  signIn,
-  signOut,
-} = NextAuth({
-  pages: {
-    signIn: "/sign-in",
-    signOut: "/signout",
-    error: "/auth/error",
-    verifyRequest: "/verify-email",
-    newUser: "/register",
-  },
-  callbacks: {
-    async signIn({ user, account }) {
-      if (account?.provider !== "credentials") {
-        return true;
-      }
+// Determine if the code is running in middleware/edge context
+const isEdgeRuntime =
+  typeof process.env.NEXT_RUNTIME === "string" &&
+  process.env.NEXT_RUNTIME === "edge";
 
-      const existingUser = await getUserById(user.id ?? "");
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    }),
+    CredentialsProvider({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
 
-      if (!existingUser?.emailVerified) {
-        return false;
-      }
+        const user = await getUserByEmail(credentials.email);
 
-      return true;
-    },
-    async session({ token, session }) {
-      // console.log("token in session", token);
-      // console.log("session in session", session);
-      return {
-        ...session,
-        user: {
-          ...session.user,
-          id: token.sub,
-          isOAuth: token.isOauth,
-        },
-      };
-    },
+        if (!user || !user.password) {
+          return null;
+        }
 
-    async jwt({ token }) {
-      // console.log("token in jwt", token);
-      if (!token.sub) return token;
-      const existingUser = await getUserById(token.sub);
+        const passwordMatch = await bcrypt.compare(
+          credentials.password,
+          user.password
+        );
 
-      if (!existingUser) return token;
-      token.name = existingUser.name;
-      token.email = existingUser.email;
+        if (passwordMatch) {
+          return user;
+        }
 
-      return token;
-    },
-  },
-  ...authConfig,
+        return null;
+      },
+    }),
+  ],
+  // Only use Prisma adapter in non-edge environments
+  adapter: isEdgeRuntime ? undefined : PrismaAdapter(prisma),
+  // Use JWT session strategy which is compatible with Edge
   session: {
     strategy: "jwt",
   },
-  adapter: PrismaAdapter(prisma),
+  pages: {
+    signIn: "/sign-in", // Changed from "/login" to "/sign-in"
+  },
+  callbacks: {
+    // Add any necessary callbacks here
+    jwt: async ({ token, user }) => {
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
+        // Add any other user properties you need
+      }
+      return token;
+    },
+    session: async ({ session, token }) => {
+      if (session?.user) {
+        session.user.id = token.id as string;
+        // Copy any other properties from token to session
+      }
+      return session;
+    },
+    redirect({ url, baseUrl }) {
+      console.log("Auth redirect called:", { url, baseUrl });
+
+      // Simple rule: Always go to dashboard after successful login
+      if (
+        url === baseUrl ||
+        url.includes("/sign-in") ||
+        url === `${baseUrl}/`
+      ) {
+        console.log("Redirecting to dashboard");
+        return `${baseUrl}/dashboard`;
+      }
+
+      // If URL starts with baseUrl, allow it
+      if (url.startsWith(baseUrl)) {
+        return url;
+      }
+
+      // Default to baseUrl
+      return baseUrl;
+    },
+  },
 });
